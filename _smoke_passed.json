@@ -1,0 +1,12 @@
+{
+  "label": "hook-07",
+  "port": 8507,
+  "login_url": "http://127.0.0.1:8507/login",
+  "http_status": 200,
+  "checks": [
+    "含登录相关文案",
+    "含密码表单线索"
+  ],
+  "passed": true,
+  "checked_at": "2026-11-25T23:57:39+08:00"
+}
