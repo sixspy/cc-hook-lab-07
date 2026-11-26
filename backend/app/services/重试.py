@@ -7,7 +7,7 @@ def 批量重试待投(限制: int = 20) -> dict:
     conn = 连接()
     try:
         rows = conn.execute(
-            "SELECT 事件号 FROM 事件 WHERE 状态 IN ('待投','投递中') ORDER BY 入队时 LIMIT ?",
+            "SELECT 事件号 FROM 事件 WHERE 状态 IN ('待投','投递中','熔断旁路') ORDER BY 入队时 LIMIT ?",
             (限制,),
         ).fetchall()
     finally:

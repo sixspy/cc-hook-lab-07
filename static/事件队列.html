@@ -24,8 +24,8 @@
   </header>
   <main class="主区">
     <header class="页头">
-      <h1>事件队列</h1>
-      <p>Webhook 投递控制台 · 应用开发全栈 · 非工单客服</p>
+      <h1>事件队列列表 · 票票有中文命运</h1>
+      <p>入队 → 签名投递 → 重试 / 死信 / 熔断旁路，同一事件号贯穿五页核账</p>
     </header>
 
 <section class="卷">
@@ -35,9 +35,10 @@
   <label>优先级</label><select id="优先级"><option>紧急</option><option selected>普通</option><option>低</option></select>
   <p class="消息" id="消息"></p>
   <button class="按钮" type="button" id="入队钮">入队（待投）</button>
-  <button class="按钮 次" type="button" id="夹具钮">灌夹具样例</button>
+  <button class="按钮 次" type="button" id="夹具钮">灌批量事件样例</button>
+  <button class="按钮 次" type="button" id="事故钮">灌 hook-07 熔断事故样例</button>
 </section>
-<section class="卷"><div class="表绕"><table><thead><tr><th>事件号</th><th>事件类型</th><th>端点键</th><th>载荷摘要</th><th>状态</th></tr></thead><tbody id="表"></tbody></table></div></section>
+<section class="卷"><div class="表绕"><table><thead><tr><th>事件号</th><th>事件类型</th><th>端点键</th><th>载荷摘要</th><th>状态 / 中文命运</th><th>操作</th></tr></thead><tbody id="表"></tbody></table></div></section>
 
   </main>
 
@@ -46,8 +47,34 @@ async function 刷表() {
   const rows = await 投递台.getJSON('/api/事件');
   const tb = document.getElementById('表'); tb.innerHTML='';
   for (const r of rows) {
-    const tr = 投递台.行('<td>'+投递台.安全文本(r.事件号)+'</td><td>'+投递台.安全文本(r.事件类型)+'</td><td>'+投递台.安全文本(r.端点键)+'</td><td>'+投递台.安全文本(r.载荷摘要)+'</td><td></td>');
-    tr.children[4].appendChild(投递台.徽章(r.状态)); tb.appendChild(tr);
+    const tr = 投递台.行(
+      '<td><a href="/事件详情.html?事件号=' + encodeURIComponent(r.事件号) + '">' +
+      投递台.安全文本(r.事件号) + '</a></td>' +
+      '<td>'+投递台.安全文本(r.事件类型)+'</td>' +
+      '<td><a href="/端点名册.html">' + 投递台.安全文本(r.端点键) + '</a></td>' +
+      '<td>'+投递台.安全文本(r.载荷摘要)+'</td><td></td><td></td>');
+    tr.children[4].appendChild(投递台.命运徽章(r.状态));
+
+    const ops = tr.children[5];
+    const 投 = document.createElement('button');
+    投.className = '按钮'; 投.type = 'button'; 投.textContent = '投递一次';
+    投.title = '按该票端点走同一把端点锁与熔断闸';
+    投.onclick = async () => {
+      投.disabled = true;
+      try {
+        const rep = await 投递台.postJSON('/api/投递', {事件号: r.事件号});
+        if (rep.熔断) alert('熔断旁路：' + (rep.说明 || '闸开，未打端点、未写成功壳'));
+        await 刷表();
+      } catch (e) { alert(e.message); 投.disabled = false; }
+    };
+    ops.appendChild(投);
+    const 详 = document.createElement('a');
+    详.className = '按钮 次'; 详.style.marginLeft = '6px';
+    详.href = '/事件详情.html?事件号=' + encodeURIComponent(r.事件号);
+    详.textContent = '详情';
+    ops.appendChild(详);
+
+    tb.appendChild(tr);
   }
 }
 document.getElementById('入队钮').onclick = async () => {
@@ -59,13 +86,26 @@ document.getElementById('入队钮').onclick = async () => {
       载荷摘要: document.getElementById('载荷摘要').value,
       优先级: document.getElementById('优先级').value,
     });
-    消息.textContent = '已入队，状态待投';
+    消息.style.color = '#2d6a4f';
+    消息.textContent = '已入队，命运：待投';
     await 刷表();
-  } catch (e) { 消息.textContent = e.message; }
+  } catch (e) { 消息.style.color = '#9b2c2c'; 消息.textContent = e.message; }
 };
 document.getElementById('夹具钮').onclick = async () => {
-  await 投递台.postJSON('/api/夹具入队/批量事件样例', {});
-  await 刷表();
+  try {
+    await 投递台.postJSON('/api/夹具入队/批量事件样例', {});
+    await 刷表();
+  } catch (e) { document.getElementById('消息').textContent = e.message; }
+};
+document.getElementById('事故钮').onclick = async () => {
+  const 消息 = document.getElementById('消息');
+  try {
+    const rep = await 投递台.postJSON('/api/夹具入队/熔断事故样例', {});
+    消息.style.color = '#5b21b6';
+    消息.textContent = '事故样例已入队 ' + ((rep.入队 || []).length) +
+      ' 票（需先在端点名册登记 ep-cb，并在签名规设熔断阈值=3，再逐票强制失败投递）';
+    await 刷表();
+  } catch (e) { 消息.style.color = '#9b2c2c'; 消息.textContent = e.message; }
 };
 刷表();
 </script>

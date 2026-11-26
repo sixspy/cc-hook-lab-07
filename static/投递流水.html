@@ -6,6 +6,18 @@
   <title>投递流水 · 投递台</title>
   <link rel="stylesheet" href="/styles.css"/>
   <script src="/common.js"></script>
+  <style>
+    .流水卡 { background:#fffdf8; border:1px solid var(--边); border-left:5px solid var(--靛浅);
+             border-radius:10px; padding:12px 14px; margin-bottom:12px; }
+    .流水卡.成功 { border-left-color:#16a34a; }
+    .流水卡.失败 { border-left-color:#dc2626; }
+    .流水卡.熔断旁路 { border-left-color:#7c3aed; background:#faf7ff; }
+    .流水卡 .头 { display:flex; justify-content:space-between; gap:10px; flex-wrap:wrap; align-items:center; }
+    .流水卡 .号 { font-family:ui-monospace,Menlo,Consolas,monospace; font-size:12.5px; }
+    .流水卡 .体 { font-size:13.5px; line-height:1.7; margin-top:6px; }
+    .流水卡 .说明 { margin-top:6px; padding:8px 10px; border-radius:8px; background:#f6f1e7; }
+    .流水卡.熔断旁路 .说明 { background:#f1eafe; color:#5b21b6; font-weight:600; }
+  </style>
 </head>
 <body>
 <header class="顶栏">
@@ -24,30 +36,89 @@
   </header>
   <main class="主区">
     <header class="页头">
-      <h1>投递流水</h1>
-      <p>Webhook 投递控制台 · 应用开发全栈 · 非工单客服</p>
+      <h1>投递流水卡片</h1>
+      <p>每次签名尝试一张卡：尝试成败、HTTP 码、端点键与中文旁路命运，和端点名册、事件详情同票同源</p>
     </header>
 
 <section class="卷">
-  <label>事件号</label><input id="事件号" placeholder="EVT-..."/>
-  <label><input type="checkbox" id="强制失败"/> 强制失败（测死信）</label>
+  <label>事件号（投递哪一票）</label><input id="事件号" placeholder="EVT-..."/>
+  <label><input type="checkbox" id="强制失败" style="width:auto;max-width:none;"/> 强制失败（夹具式连续失败打熔断阈）</label>
   <p class="消息" id="消息"></p>
   <button class="按钮" type="button" id="投递钮">签名投递一次</button>
-  <button class="按钮 次" type="button" id="批量钮">批量重试待投</button>
+  <button class="按钮 次" type="button" id="批量钮">批量重试待投/熔断旁路</button>
 </section>
-<section class="卷"><div class="表绕"><table><thead><tr><th>尝试号</th><th>事件号</th><th>端点键</th><th>签名摘要</th><th>状态</th><th>响应码</th></tr></thead><tbody id="表"></tbody></table></div></section>
+
+<section class="卷">
+  <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:10px;">
+    <label style="margin:0;">按端点键筛选</label>
+    <input id="端点筛选" style="max-width:260px;" placeholder="留空看全部"/>
+    <button class="按钮 次" type="button" id="筛钮">筛选</button>
+    <span class="说明" id="计数"></span>
+  </div>
+  <div id="卡片列"></div>
+</section>
 
   </main>
 
 <script>
-async function 刷表() {
-  const rows = await 投递台.getJSON('/api/投递');
-  const tb = document.getElementById('表'); tb.innerHTML='';
-  for (const r of rows) {
-    const tr = 投递台.行('<td>'+投递台.安全文本(r.尝试号)+'</td><td>'+投递台.安全文本(r.事件号)+'</td><td>'+投递台.安全文本(r.端点键)+'</td><td>'+投递台.安全文本(r.签名摘要)+'</td><td></td><td>'+投递台.安全文本(r.响应码)+'</td>');
-    tr.children[4].appendChild(投递台.徽章(r.状态)); tb.appendChild(tr);
+const 参数 = new URLSearchParams(location.search);
+if (参数.get('端点键')) document.getElementById('端点筛选').value = 参数.get('端点键');
+if (参数.get('事件号')) document.getElementById('事件号').value = 参数.get('事件号');
+
+function 命运中文(r) {
+  if (r.状态 === '熔断旁路')
+    return '中文旁路：熔断闸开，本次未打端点、未写成功壳；票保持可复位续投。';
+  if (r.状态 === '成功')
+    return '尝试成败：成功，对端 ' + (r.响应码 || 200) + ' 签收，事件结案已投递。';
+  if (r.状态 === '失败')
+    return '尝试成败：失败（响应码 ' + (r.响应码 || 0) + '），已计端点连续失败与事件重试。';
+  return '命运：' + (r.状态 || '—');
+}
+
+function 渲染卡片(rows) {
+  const 键 = document.getElementById('端点筛选').value.trim();
+  const list = 键 ? rows.filter(r => r.端点键 === 键) : rows;
+  const box = document.getElementById('卡片列');
+  box.innerHTML = '';
+  document.getElementById('计数').textContent = '共 ' + list.length + ' 条尝试流水（最近 200 条内）';
+  if (!list.length) {
+    const p = document.createElement('p'); p.className = '说明';
+    p.textContent = '暂无投递尝试。先到事件队列入队，再在上方投递一次。';
+    box.appendChild(p); return;
+  }
+  for (const r of list) {
+    const card = document.createElement('article');
+    card.className = '流水卡 ' + 投递台.安全文本(r.状态);
+
+    const head = document.createElement('div'); head.className = '头';
+    const no = document.createElement('span'); no.className = '号';
+    no.innerHTML = '尝试 ' + 投递台.安全文本(r.尝试号) +
+      ' · 事件 <a href="/事件详情.html?事件号=' + encodeURIComponent(r.事件号) + '">' +
+      投递台.安全文本(r.事件号) + '</a> · 端点键 <b>' + 投递台.安全文本(r.端点键) + '</b>';
+    head.appendChild(no);
+    head.appendChild(投递台.命运徽章(r.状态));
+    card.appendChild(head);
+
+    const body = document.createElement('div'); body.className = '体';
+    body.innerHTML =
+      'HTTP 语义码：<b>' + 投递台.安全文本(r.响应码 || 0) + '</b>' +
+      ' · 投递时刻：' + 投递台.安全文本(r.投递时 || '') + '<br/>' +
+      '签名摘要：<span class="指纹">' + 投递台.安全文本(r.签名摘要 || '（无）') + '</span>';
+    card.appendChild(body);
+
+    const sm = document.createElement('div'); sm.className = '说明';
+    sm.textContent = (r.说明 ? r.说明 + ' ｜ ' : '') + 命运中文(r);
+    card.appendChild(sm);
+
+    box.appendChild(card);
   }
 }
+
+async function 刷表() {
+  渲染卡片(await 投递台.getJSON('/api/投递'));
+}
+document.getElementById('筛钮').onclick = 刷表;
+document.getElementById('端点筛选').addEventListener('keydown', e => { if (e.key === 'Enter') 刷表(); });
 document.getElementById('投递钮').onclick = async () => {
   const 消息 = document.getElementById('消息');
   try {
@@ -55,14 +126,20 @@ document.getElementById('投递钮').onclick = async () => {
       事件号: document.getElementById('事件号').value,
       强制失败: document.getElementById('强制失败').checked,
     });
-    消息.textContent = JSON.stringify(rep);
+    消息.style.color = rep.熔断 ? '#5b21b6' : '#2d6a4f';
+    消息.textContent = '投递返回命运：' + (rep.状态 || '') +
+      (rep.事件状态 ? ' / 事件=' + rep.事件状态 : '') +
+      (rep.熔断 ? '（熔断旁路，未写成功壳）' : '');
     await 刷表();
-  } catch (e) { 消息.textContent = e.message; }
+  } catch (e) { 消息.style.color = '#9b2c2c'; 消息.textContent = e.message; }
 };
 document.getElementById('批量钮').onclick = async () => {
-  const rep = await 投递台.postJSON('/api/投递/批量重试', {});
-  document.getElementById('消息').textContent = '批量 '+rep.条数;
-  await 刷表();
+  try {
+    const rep = await 投递台.postJSON('/api/投递/批量重试', {});
+    document.getElementById('消息').style.color = '#2d6a4f';
+    document.getElementById('消息').textContent = '批量处理 ' + (rep.条数 != null ? rep.条数 : JSON.stringify(rep));
+    await 刷表();
+  } catch (e) { document.getElementById('消息').textContent = e.message; }
 };
 刷表();
 </script>

@@ -68,6 +68,20 @@ CREATE TABLE IF NOT EXISTS 操作留痕 (
   事件号 TEXT NOT NULL DEFAULT '',
   详情 TEXT NOT NULL DEFAULT ''
 );
+CREATE TABLE IF NOT EXISTS 端点熔断 (
+  端点键 TEXT PRIMARY KEY,
+  状态 TEXT NOT NULL DEFAULT '正常',
+  灯 TEXT NOT NULL DEFAULT '绿',
+  连续失败 INTEGER NOT NULL DEFAULT 0,
+  阈值 INTEGER NOT NULL DEFAULT 5,
+  指纹 TEXT NOT NULL DEFAULT '',
+  封条路径 TEXT NOT NULL DEFAULT '',
+  熔断时 TEXT NOT NULL DEFAULT '',
+  熔断尝试号 TEXT NOT NULL DEFAULT '',
+  熔断行id INTEGER NOT NULL DEFAULT 0,
+  复位时 TEXT NOT NULL DEFAULT '',
+  更新时 TEXT NOT NULL DEFAULT ''
+);
 """
 
 
@@ -89,6 +103,8 @@ def 初始化库() -> None:
             "超时秒": "5",
         }.items():
             conn.execute("INSERT INTO 签名规(键,值) VALUES (?,?)", (k, v))
+    # 旧卷库幂等补键：端点连续失败熔断阈
+    conn.execute("INSERT OR IGNORE INTO 签名规(键,值) VALUES ('熔断阈值','5')")
     if conn.execute("SELECT COUNT(*) AS c FROM 投递端点").fetchone()["c"] == 0:
         for row in [
             ("ep-billing", "账单回调", "https://example.local/hooks/billing", "v1", 1, "账务"),

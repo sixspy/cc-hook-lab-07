@@ -36,6 +36,8 @@ def 概览() -> dict:
         return {
             "端点数": c("SELECT COUNT(*) FROM 投递端点"),
             "启用端点": c("SELECT COUNT(*) FROM 投递端点 WHERE 启用=1"),
+            "熔断端点": c("SELECT COUNT(*) FROM 端点熔断 WHERE 状态='熔断'"),
+            "熔断旁路流水": c("SELECT COUNT(*) FROM 投递尝试 WHERE 状态='熔断旁路'"),
             "事件总数": c("SELECT COUNT(*) FROM 事件"),
             "待投": c("SELECT COUNT(*) FROM 事件 WHERE 状态='待投'"),
             "投递中": c("SELECT COUNT(*) FROM 事件 WHERE 状态='投递中'"),

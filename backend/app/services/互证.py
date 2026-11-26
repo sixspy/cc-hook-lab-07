@@ -4,16 +4,30 @@ from app.services.时间 import 此刻
 
 
 def 跑一次() -> dict:
+    # 联查端点名册 ⋈ 熔断 ⋈ 流水，抓“熔断后仍投成功”的假绿（影子/正式同票）
+    from app.services import 端点
+    熔断对账 = 端点.名册对账()
+    假绿端点数 = int(熔断对账.get("异常数", 0))
+    熔断端点数 = int(熔断对账.get("熔断端点数", 0))
+
     t = 此刻()
     conn = 连接()
     try:
         总 = conn.execute("SELECT COUNT(*) AS c FROM 事件").fetchone()["c"]
         已 = conn.execute("SELECT COUNT(*) AS c FROM 事件 WHERE 状态='已投递'").fetchone()["c"]
         死 = conn.execute("SELECT COUNT(*) AS c FROM 事件 WHERE 状态='死信'").fetchone()["c"]
-        待 = conn.execute("SELECT COUNT(*) AS c FROM 事件 WHERE 状态 IN ('待投','投递中')").fetchone()["c"]
+        待 = conn.execute(
+            "SELECT COUNT(*) AS c FROM 事件 WHERE 状态 IN ('待投','投递中','熔断旁路')"
+        ).fetchone()["c"]
         匣 = conn.execute("SELECT COUNT(*) AS c FROM 死信 WHERE 状态='待处置'").fetchone()["c"]
-        对齐 = 1 if (死 == 匣 and 已 + 死 + 待 <= 总) else 0
-        说明 = "事件/投递/死信口径对齐" if 对齐 else "死信匣与事件死信数不一致或水位异常"
+        基础对齐 = (死 == 匣 and 已 + 死 + 待 <= 总)
+        对齐 = 1 if (基础对齐 and 假绿端点数 == 0) else 0
+        if 对齐:
+            说明 = "事件/投递/死信口径对齐；端点名册熔断对账无假绿"
+        elif not 基础对齐:
+            说明 = "死信匣与事件死信数不一致或水位异常"
+        else:
+            说明 = f"端点名册对账撕裂：{假绿端点数} 个端点熔断后仍增成功行（假绿）"
         conn.execute(
             "INSERT INTO 互证批次(时刻,事件总数,已投递数,死信数,待投数,是否对齐,说明) VALUES (?,?,?,?,?,?,?)",
             (t, 总, 已, 死, 待, 对齐, 说明),
@@ -29,7 +43,9 @@ def 跑一次() -> dict:
             "是否对齐": bool(对齐),
             "是否全部对齐": bool(对齐),
             "说明": 说明,
-            "明细": {"总": 总, "已": 已, "死": 死, "待": 待, "匣": 匣},
+            "明细": {"总": 总, "已": 已, "死": 死, "待": 待, "匣": 匣,
+                    "熔断端点": 熔断端点数, "假绿端点": 假绿端点数},
+            "熔断对账": 熔断对账,
         }
     finally:
         conn.close()

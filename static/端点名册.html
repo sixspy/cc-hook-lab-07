@@ -24,36 +24,154 @@
   </header>
   <main class="主区">
     <header class="页头">
-      <h1>端点名册</h1>
-      <p>Webhook 投递控制台 · 应用开发全栈 · 非工单客服</p>
+      <h1>端点名册 · 熔断灯卡片</h1>
+      <p>名册与投递流水同票联查：熔断灯、端点键、指纹封条、熔断后成败与中文对账结论一屏核清</p>
     </header>
 
 <section class="卷">
-  <label>端点键</label><input id="端点键" placeholder="ep-new"/>
-  <label>名称</label><input id="名称"/>
-  <label>回调URL</label><input id="回调URL" placeholder="https://..."/>
-  <label>密钥版本</label><input id="密钥版本" value="v1"/>
+  <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;">
+    <button class="按钮" type="button" id="对账钮">跑名册对账（联查流水抓假绿）</button>
+    <span class="说明" id="对账时刻"></span>
+  </div>
+  <div id="对账条" style="margin-top:12px;"></div>
+</section>
+
+<section class="卷">
+  <h2 style="margin-top:0;">登记新端点</h2>
+  <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:0 14px;">
+    <div><label>端点键</label><input id="端点键" placeholder="ep-cb"/></div>
+    <div><label>名称</label><input id="名称" placeholder="回调接收端"/></div>
+    <div><label>回调URL</label><input id="回调URL" placeholder="https://example.com/hook"/></div>
+    <div><label>密钥版本</label><input id="密钥版本" value="v1"/></div>
+  </div>
   <p class="消息" id="消息"></p>
   <button class="按钮" type="button" id="登记">登记端点</button>
 </section>
-<section class="卷"><div class="表绕"><table><thead><tr><th>端点键</th><th>名称</th><th>回调URL</th><th>密钥版本</th><th>启用</th><th>操作</th></tr></thead><tbody id="表"></tbody></table></div></section>
+
+<section>
+  <div class="端点卡网格" id="卡片网格"></div>
+</section>
 
   </main>
 
 <script>
-async function 刷表() {
-  const rows = await 投递台.getJSON('/api/端点');
-  const tb = document.getElementById('表'); tb.innerHTML='';
-  for (const r of rows) {
-    const tr = 投递台.行('<td>'+投递台.安全文本(r.端点键)+'</td><td>'+投递台.安全文本(r.名称)+'</td><td>'+投递台.安全文本(r.回调URL)+'</td><td>'+投递台.安全文本(r.密钥版本)+'</td><td></td><td></td>');
-    tr.children[4].appendChild(投递台.徽章(r.启用 ? '启用' : '停用'));
-    const btn = document.createElement('button'); btn.className='按钮 次'; btn.type='button';
-    btn.textContent = r.启用 ? '停用' : '启用';
-    btn.onclick = async () => { await 投递台.postJSON('/api/端点/启用', {端点键:r.端点键, 启用: !r.启用}); await 刷表(); };
-    tr.children[5].appendChild(btn); tb.appendChild(tr);
+function 灯文案(e) {
+  if (e.灯 === '假绿') return '假绿灯';
+  if (e.灯 === '红') return '熔断红灯';
+  if (e.灯 === '黄') return '连失黄灯';
+  if (e.灯 === '灰') return '停用灰灯';
+  return '健康绿灯';
+}
+
+function 渲染对账条(rep) {
+  const box = document.getElementById('对账条');
+  box.innerHTML = '';
+  const bar = document.createElement('div');
+  bar.className = '对账条 ' + (rep.对齐 ? '齐' : '裂');
+  bar.textContent = (rep.对齐 ? '✅ 对账对齐：' : '⛔ 对账撕裂：') + rep.说明;
+  box.appendChild(bar);
+  document.getElementById('对账时刻').textContent =
+    '对账时刻 ' + (rep.时刻 || '') + ' · 端点 ' + rep.端点数 +
+    ' · 熔断 ' + rep.熔断端点数 + ' · 异常 ' + rep.异常数;
+}
+
+function 渲染卡片(eps) {
+  const grid = document.getElementById('卡片网格');
+  grid.innerHTML = '';
+  if (!eps.length) {
+    const p = document.createElement('p');
+    p.className = '说明';
+    p.textContent = '名册为空，请先在上方登记端点';
+    grid.appendChild(p);
+    return;
+  }
+  for (const e of eps) {
+    const card = document.createElement('article');
+    card.className = '端点卡 灯' + e.灯;
+
+    const h = document.createElement('h3');
+    const 名 = document.createElement('span');
+    名.textContent = e.名称 || e.端点键;
+    h.appendChild(名);
+    h.appendChild(投递台.熔断灯(e.灯, 灯文案(e)));
+    card.appendChild(h);
+
+    const key = document.createElement('div');
+    key.innerHTML = '端点键 <span class="键">' + 投递台.安全文本(e.端点键) + '</span>';
+    key.className = 'meta';
+    card.appendChild(key);
+
+    const meta = document.createElement('div');
+    meta.className = 'meta';
+    meta.innerHTML =
+      '回调URL：' + 投递台.安全文本(e.回调URL) + '<br/>' +
+      '密钥版本：' + 投递台.安全文本(e.密钥版本) +
+      ' · 启用：' + (e.启用 ? '是' : '否') + '<br/>' +
+      '连续失败 <b>' + e.连续失败 + '</b> / 熔断阈 <b>' + e.阈值 + '</b><br/>' +
+      '熔断后成功 <b style="color:#9b2c2c">' + e.熔断后成功数 + '</b>' +
+      ' · 旁路 <b style="color:#5b21b6">' + e.熔断后旁路数 + '</b>' +
+      ' · 尝试合计 ' + e.熔断后尝试数;
+    card.appendChild(meta);
+
+    const fp = document.createElement('div');
+    fp.className = '指纹';
+    fp.textContent = '指纹 SHA256：' + (e.当前指纹 || '—') +
+      (e.封条存在 ? ('\n封条封态：' + (e.封条封态 || '—') + ' · 指纹' + (e.指纹一致 ? '一致' : '不一致！')) : '\n物化封条：尚未生成（未熔断）') +
+      (e.熔断时 ? ('\n熔断时刻：' + e.熔断时 + ' · 封于尝试 ' + (e.熔断尝试号 || '—')) : '');
+    fp.style.whiteSpace = 'pre-wrap';
+    card.appendChild(fp);
+
+    const 结论 = document.createElement('div');
+    结论.className = '结论';
+    结论.textContent = '对账结论：' + e.对账结论;
+    card.appendChild(结论);
+
+    const ops = document.createElement('div');
+    ops.className = '操作行';
+
+    const 启 = document.createElement('button');
+    启.className = '按钮 次'; 启.type = 'button';
+    启.textContent = e.启用 ? '停用端点' : '启用端点';
+    启.onclick = async () => {
+      await 投递台.postJSON('/api/端点/启用', {端点键: e.端点键, 启用: !e.启用});
+      await 刷对账();
+    };
+    ops.appendChild(启);
+
+    const 复位 = document.createElement('button');
+    复位.className = '按钮'; 复位.type = 'button';
+    复位.textContent = '人工复核后熔断复位';
+    复位.disabled = !e.熔断;
+    复位.title = e.熔断 ? '持同一端点锁合闸，封条改写为已复位' : '当前未熔断，无需复位';
+    复位.onclick = async () => {
+      复位.disabled = true;
+      try {
+        await 投递台.postJSON('/api/端点/熔断复位', {端点键: e.端点键});
+        await 刷对账();
+      } catch (err) { alert(err.message); 复位.disabled = false; }
+    };
+    ops.appendChild(复位);
+
+    const 流水 = document.createElement('a');
+    流水.className = '按钮 次';
+    流水.href = '/投递流水.html?端点键=' + encodeURIComponent(e.端点键);
+    流水.textContent = '看该端点流水';
+    ops.appendChild(流水);
+
+    card.appendChild(ops);
+    grid.appendChild(card);
   }
 }
+
+async function 刷对账() {
+  const rep = await 投递台.getJSON('/api/端点/对账');
+  渲染对账条(rep);
+  渲染卡片(rep.端点 || []);
+}
+
+document.getElementById('对账钮').onclick = 刷对账;
 document.getElementById('登记').onclick = async () => {
+  const 消息 = document.getElementById('消息');
   try {
     await 投递台.postJSON('/api/端点', {
       端点键: document.getElementById('端点键').value,
@@ -61,11 +179,12 @@ document.getElementById('登记').onclick = async () => {
       回调URL: document.getElementById('回调URL').value,
       密钥版本: document.getElementById('密钥版本').value,
     });
-    document.getElementById('消息').textContent = '已登记';
-    await 刷表();
-  } catch (e) { document.getElementById('消息').textContent = e.message; }
+    消息.style.color = '#2d6a4f';
+    消息.textContent = '已登记，名册与熔断闸同源初始化';
+    await 刷对账();
+  } catch (e) { 消息.style.color = '#9b2c2c'; 消息.textContent = e.message; }
 };
-刷表();
+刷对账();
 </script>
 
 </body>

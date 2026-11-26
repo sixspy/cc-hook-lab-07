@@ -24,35 +24,114 @@
   </header>
   <main class="主区">
     <header class="页头">
-      <h1>死信匣</h1>
-      <p>Webhook 投递控制台 · 应用开发全栈 · 非工单客服</p>
+      <h1>死信匣详情 · 同票联查</h1>
+      <p>重试耗尽入匣；端点熔断中重投会被同一把端点锁拒绝，死信保持待处置，绝不写成功壳</p>
     </header>
 
 <section class="卷">
-  <label>事件号</label><input id="事件号"/>
+  <label>事件号（死信处置）</label><input id="事件号"/>
   <p class="消息" id="消息"></p>
   <button class="按钮" type="button" id="重投钮">死信重投</button>
   <button class="按钮 次" type="button" id="作废钮">作废</button>
 </section>
-<section class="卷"><div class="表绕"><table><thead><tr><th>死信号</th><th>事件号</th><th>端点键</th><th>失败次数</th><th>末次原因</th><th>状态</th></tr></thead><tbody id="表"></tbody></table></div></section>
+<section class="卷"><div class="表绕"><table><thead><tr><th>死信号</th><th>事件号</th><th>端点键</th><th>失败次数</th><th>末次原因</th><th>状态 / 命运</th><th>操作</th></tr></thead><tbody id="表"></tbody></table></div></section>
+
+<section class="卷" id="详情卷" hidden>
+  <h2 style="margin-top:0;">死信详情 · 同票事件与尝试流水</h2>
+  <div id="详情体"></div>
+</section>
 
   </main>
 
 <script>
+async function 开详情(eid) {
+  document.getElementById('事件号').value = eid;
+  const 卷 = document.getElementById('详情卷');
+  const box = document.getElementById('详情体');
+  卷.hidden = false;
+  box.textContent = '联查中…';
+  try {
+    const d = await 投递台.getJSON('/api/事件/' + encodeURIComponent(eid));
+    box.innerHTML = '';
+
+    const head = document.createElement('p'); head.className = '说明';
+    head.innerHTML = '事件 <b>' + 投递台.安全文本(d.事件号) + '</b> 当前命运：';
+    head.appendChild(投递台.徽章(d.状态));
+    head.innerHTML += ' ｜ 端点键 <b>' + 投递台.安全文本(d.端点键) + '</b>';
+    box.appendChild(head);
+
+    const tries = d.尝试 || [];
+    if (!tries.length) {
+      const p = document.createElement('p'); p.className = '说明'; p.textContent = '无尝试记录';
+      box.appendChild(p);
+    }
+    for (const a of tries) {
+      const row = document.createElement('div');
+      row.className = '尝试行';
+      row.style.cssText = 'border:1px solid var(--边);border-radius:10px;padding:10px 12px;margin-bottom:10px;background:#fffdf8;';
+      const top = document.createElement('div');
+      top.style.cssText = 'display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap;';
+      const no = document.createElement('span'); no.className = '说明';
+      no.innerHTML = '<b>' + 投递台.安全文本(a.尝试号) + '</b> · HTTP ' +
+        投递台.安全文本(a.响应码 || 0) + ' · ' + 投递台.安全文本(a.投递时 || '');
+      top.appendChild(no);
+      top.appendChild(投递台.徽章(a.状态));
+      row.appendChild(top);
+      if (a.说明) {
+        const sm = document.createElement('div');
+        sm.className = '命运句';
+        sm.style.marginTop = '6px';
+        sm.style.fontSize = '13px';
+        sm.textContent = a.说明;
+        row.appendChild(sm);
+      }
+      box.appendChild(row);
+    }
+    卷.scrollIntoView({behavior:'smooth', block:'nearest'});
+  } catch (e) { box.textContent = '联查失败：' + e.message; }
+}
+
 async function 刷表() {
   const rows = await 投递台.getJSON('/api/死信');
   const tb = document.getElementById('表'); tb.innerHTML='';
   for (const r of rows) {
-    const tr = 投递台.行('<td>'+投递台.安全文本(r.死信号)+'</td><td>'+投递台.安全文本(r.事件号)+'</td><td>'+投递台.安全文本(r.端点键)+'</td><td>'+投递台.安全文本(r.失败次数)+'</td><td>'+投递台.安全文本(r.末次原因)+'</td><td></td>');
-    tr.children[5].appendChild(投递台.徽章(r.状态)); tb.appendChild(tr);
+    const tr = 投递台.行('<td>'+投递台.安全文本(r.死信号)+'</td><td><a href="/事件详情.html?事件号='+encodeURIComponent(r.事件号)+'">'+投递台.安全文本(r.事件号)+'</a></td><td>'+投递台.安全文本(r.端点键)+'</td><td>'+投递台.安全文本(r.失败次数)+'</td><td>'+投递台.安全文本(r.末次原因)+'</td><td></td><td></td>');
+    tr.children[5].appendChild(投递台.命运徽章(r.状态));
+    const ops = tr.children[6];
+
+    const 详 = document.createElement('button');
+    详.className = '按钮 次'; 详.type = 'button'; 详.textContent = '详情';
+    详.onclick = () => 开详情(r.事件号);
+    ops.appendChild(详);
+
+    const 投 = document.createElement('button');
+    投.className = '按钮'; 投.type = 'button'; 投.textContent = '重投';
+    投.style.marginLeft = '6px';
+    投.onclick = async () => {
+      const msg = document.getElementById('消息');
+      try {
+        const rep = await 投递台.postJSON('/api/死信/重投', {事件号: r.事件号});
+        msg.style.color = '#2d6a4f';
+        msg.textContent = '已重投：' + JSON.stringify(rep).slice(0, 160);
+        await 刷表(); await 开详情(r.事件号);
+      } catch (e) {
+        msg.style.color = '#9b2c2c';
+        msg.textContent = '熔断/处置拒绝：' + e.message + '（死信保持待处置）';
+        await 刷表(); await 开详情(r.事件号);
+      }
+    };
+    ops.appendChild(投);
+    tb.appendChild(tr);
   }
 }
 document.getElementById('重投钮').onclick = async () => {
+  const msg = document.getElementById('消息');
   try {
     const rep = await 投递台.postJSON('/api/死信/重投', {事件号: document.getElementById('事件号').value});
-    document.getElementById('消息').textContent = JSON.stringify(rep);
+    msg.style.color = '#2d6a4f';
+    msg.textContent = JSON.stringify(rep);
     await 刷表();
-  } catch (e) { document.getElementById('消息').textContent = e.message; }
+  } catch (e) { msg.style.color = '#9b2c2c'; msg.textContent = e.message; }
 };
 document.getElementById('作废钮').onclick = async () => {
   try {

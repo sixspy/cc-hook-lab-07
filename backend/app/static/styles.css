@@ -61,8 +61,43 @@
   .徽章.待投 { background: #fde8c8; color: #9a5700; }
   .徽章.投递中 { background: #dbeafe; color: #1e40af; }
   .徽章.待确认 { background: #fef3c7; color: #92400e; }
-  .徽章.已投递 { background: #d1fae5; color: var(--好); }
+  .徽章.已投递, .徽章.成功 { background: #d1fae5; color: var(--好); }
   .徽章.已作废 { background: #fee2e2; color: var(--险); }
+  .徽章.失败, .徽章.死信 { background: #fecaca; color: #7f1d1d; }
+  .徽章.待处置 { background: #fee2e2; color: var(--险); }
+  .徽章.已重投 { background: #dbeafe; color: #1e40af; }
+  .徽章.熔断, .徽章.熔断旁路 { background: #ede9fe; color: #5b21b6; border: 1px solid #c4b5fd; }
+  .徽章.假绿 { background: #111827; color: #fca5a5; border: 1px solid #ef4444; }
+  .徽章.正常 { background: #d1fae5; color: var(--好); }
+  .徽章.停用 { background: #e5e7eb; color: #4b5563; }
+  .命运句 { font-size: 12px; color: #6b5b4f; margin-top: 2px; }
+  .灯 { display: inline-flex; align-items: center; gap: 6px; font-weight: 700; }
+  .灯 .点 { width: 12px; height: 12px; border-radius: 50%; display: inline-block; box-shadow: 0 0 0 3px rgba(0,0,0,0.06); }
+  .灯.绿 .点 { background: #16a34a; }
+  .灯.黄 .点 { background: #d97706; }
+  .灯.红 .点 { background: #dc2626; animation: 呼吸 1.2s infinite; }
+  .灯.灰 .点 { background: #9ca3af; }
+  .灯.假绿 .点 { background: #111827; border: 2px solid #ef4444; }
+  @keyframes 呼吸 { 0%,100% { opacity: 1; } 50% { opacity: 0.35; } }
+  .端点卡网格 { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 14px; }
+  .端点卡 { background: #fffdf8; border: 1px solid var(--边); border-left-width: 5px; border-radius: 10px; padding: 14px; display: flex; flex-direction: column; gap: 8px; }
+  .端点卡.灯绿 { border-left-color: #16a34a; }
+  .端点卡.灯黄 { border-left-color: #d97706; }
+  .端点卡.灯红 { border-left-color: #dc2626; }
+  .端点卡.灯灰 { border-left-color: #9ca3af; }
+  .端点卡.灯假绿 { border-left-color: #ef4444; background: #fff5f5; }
+  .端点卡 h3 { margin: 0; font-size: 1.05rem; color: var(--靛); display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+  .端点卡 .键 { font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 12px; background: #f1ece2; padding: 2px 6px; border-radius: 6px; }
+  .端点卡 .meta { font-size: 13px; line-height: 1.5; color: #4b4038; word-break: break-all; }
+  .端点卡 .结论 { font-size: 12.5px; border-radius: 8px; padding: 8px 10px; background: #f6f1e7; }
+  .端点卡.灯红 .结论, .端点卡.灯假绿 .结论 { background: #feecec; color: #7f1d1d; }
+  .端点卡 .操作行 { display: flex; gap: 8px; flex-wrap: wrap; margin-top: auto; }
+  .端点卡 .操作行 .按钮 { padding: 6px 10px; font-size: 13px; }
+  .对账条 { border-radius: 10px; padding: 12px 14px; margin-bottom: 14px; font-size: 14px; font-weight: 600; }
+  .对账条.齐 { background: #d1fae5; color: var(--好); }
+  .对账条.裂 { background: #fee2e2; color: var(--险); }
+  .指纹 { font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 11.5px; color: #6b5b4f; }
+  .详情面板 { white-space: pre-wrap; background: #2a2520; color: #f3ede1; padding: 14px; border-radius: 10px; font-size: 12.5px; line-height: 1.6; overflow-x: auto; }
   .按钮 {
     background: var(--靛);
     color: #fff;
@@ -73,6 +108,7 @@
     font-size: 14px;
   }
   .按钮.次 { background: #6b5b4f; }
+  a.按钮 { text-decoration: none; display: inline-block; line-height: 1.4; }
   .按钮:disabled { opacity: 0.45; cursor: not-allowed; }
   label { display: block; margin: 8px 0 4px; font-size: 13px; }
   input, select, textarea {

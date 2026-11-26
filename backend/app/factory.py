@@ -127,7 +127,19 @@ def create_app() -> Flask:
 
     @app.get("/api/端点")
     def api_端点():
-        return jsonify(签名目录.端点列表())
+        return jsonify(端点.名册列表())
+
+    @app.get("/api/端点/对账")
+    def api_端点对账_get():
+        return jsonify(端点.名册对账())
+
+    @app.post("/api/端点/对账")
+    def api_端点对账_post():
+        return jsonify(端点.名册对账())
+
+    @app.get("/api/熔断")
+    def api_熔断态():
+        return jsonify(端点.名册对账())
 
     @app.post("/api/端点")
     def api_端点登记():
@@ -142,6 +154,14 @@ def create_app() -> Flask:
         body = request.get_json(force=True, silent=True) or {}
         try:
             return jsonify(端点.改启用(body["端点键"], bool(body.get("启用"))))
+        except (KeyError, ValueError) as e:
+            return jsonify({"错误": str(e)}), 400
+
+    @app.post("/api/端点/熔断复位")
+    def api_端点熔断复位():
+        body = request.get_json(force=True, silent=True) or {}
+        try:
+            return jsonify(端点.熔断复位(body["端点键"]))
         except (KeyError, ValueError) as e:
             return jsonify({"错误": str(e)}), 400
 

@@ -6,6 +6,15 @@
   <title>签名规 · 投递台</title>
   <link rel="stylesheet" href="/styles.css"/>
   <script src="/common.js"></script>
+  <style>
+    .策略网格 { display:grid; grid-template-columns:repeat(auto-fit,minmax(280px,1fr)); gap:14px; }
+    .策略卡 { border:1px solid var(--边); border-radius:10px; padding:14px; background:#fffdf8; }
+    .策略卡 h3 { margin:0 0 6px; color:var(--靛); font-size:1rem; display:flex; justify-content:space-between; gap:8px; }
+    .策略卡 .当前 { font-family:ui-monospace,Menlo,Consolas,monospace; background:#eef2f8; border-radius:6px; padding:1px 8px; }
+    .策略卡 p { margin:6px 0 0; font-size:13px; line-height:1.7; color:#4b4038; }
+    .策略卡.闸 { border-left:5px solid #7c3aed; }
+    .策略卡.重试 { border-left:5px solid #b7791f; }
+  </style>
 </head>
 <body>
 <header class="顶栏">
@@ -24,33 +33,98 @@
   </header>
   <main class="主区">
     <header class="页头">
-      <h1>签名规</h1>
-      <p>Webhook 投递控制台 · 应用开发全栈 · 非工单客服</p>
+      <h1>签名规策略 · 中文命运口径</h1>
+      <p>HMAC-SHA256 签名、重试死信阈、端点熔断阈都在此配置；改值即被下一次投递临界区读取</p>
     </header>
 
 <section class="卷">
-  <label>键</label><input id="键" placeholder="最大重试"/>
+  <h2 style="margin-top:0;">闸口策略解读（当前库内实值）</h2>
+  <div class="策略网格" id="策略网格"></div>
+</section>
+
+<section class="卷">
+  <h2 style="margin-top:0;">修改策略键值</h2>
+  <label>键</label><input id="键" placeholder="熔断阈值 或 最大重试"/>
   <label>值</label><input id="值"/>
   <p class="消息" id="消息"></p>
   <button class="按钮" type="button" id="保存">保存签名规</button>
+  <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px;">
+    <button class="按钮 次" type="button" data-k="熔断阈值" data-v="3">快捷：熔断阈值=3（配事故样例）</button>
+    <button class="按钮 次" type="button" data-k="熔断阈值" data-v="5">快捷：熔断阈值=5（默认）</button>
+    <button class="按钮 次" type="button" data-k="最大重试" data-v="3">快捷：最大重试=3</button>
+  </div>
 </section>
-<section class="卷"><pre id="规" class="说明"></pre></section>
+<section class="卷"><h2 style="margin-top:0;">签名规原始 JSON（与 /api/签名规 同票）</h2><pre id="规" class="详情面板"></pre></section>
 
   </main>
 
 <script>
-async function 刷() {
-  document.getElementById('规').textContent = JSON.stringify(await 投递台.getJSON('/api/签名规'), null, 2);
-}
-document.getElementById('保存').onclick = async () => {
-  try {
-    const k = document.getElementById('键').value;
-    const v = document.getElementById('值').value;
-    await 投递台.postJSON('/api/签名规', {[k]: v});
-    document.getElementById('消息').textContent = '已保存';
-    await 刷();
-  } catch (e) { document.getElementById('消息').textContent = e.message; }
+const 策略说明 = {
+  '熔断阈值': {
+    cls: '闸',
+    文: '端点维度连续失败达到此数即落熔断：物化指纹封条封档当刻「端点键｜回调URL｜密钥版本」，此后该端点的投递在同一把端点锁 + 同一写事务内读到闸开，只写「熔断旁路 / HTTP 503」，不打端点、不写成功壳。端点名册联查 rowid 抓熔断后成功回刷（假绿）。人工复核后在端点名册复位合闸。'
+  },
+  '最大重试': {
+    cls: '重试',
+    文: '事件维度的最大重试次数。单次投递失败会同时累加事件重试数与端点连续失败数；事件新失败次数达到本值即入死信匣待处置。注意：事件重试耗尽与端点熔断是两条口径，可能同时发生；熔断中死信重投会被同锁拒绝，死信保持待处置。'
+  },
+  '签名算法': { cls: '', 文: '每次投递用密钥版本对应的密钥对「事件号 + 载荷摘要」做 HMAC-SHA256，签名摘要落投递尝试，供对端验签与互证同票核对。' },
+  '超时秒': { cls: '', 文: '模拟回调等待对端响应的超时预算；超时按一次失败尝试入账，参与连续失败与重试计数。' },
+  '主链': { cls: '', 文: '本实验台的主链口径：端点登记→事件入队→签名投递→失败重试与死信→投递账互证；hook-07 起在投递环节加入端点熔断拒投/旁路。' },
+  '产品名': { cls: '', 文: '投递台名称配置，仅用于页面与概览展示。' },
 };
+
+function 渲染策略(rules) {
+  const grid = document.getElementById('策略网格');
+  grid.innerHTML = '';
+  const keys = Array.from(new Set(['熔断阈值', '最大重试', ...Object.keys(rules)]));
+  for (const k of keys) {
+    const v = rules[k];
+    const info = 策略说明[k] || { cls: '', 文: '自定义签名规键：保存后由相关服务在运行时读取。' };
+    const card = document.createElement('div');
+    card.className = '策略卡 ' + info.cls;
+    const h = document.createElement('h3');
+    const kt = document.createElement('span'); kt.textContent = k;
+    const val = document.createElement('span'); val.className = '当前';
+    val.textContent = v === undefined ? '未设置（走代码默认）' : String(v);
+    h.appendChild(kt); h.appendChild(val);
+    card.appendChild(h);
+    const p = document.createElement('p'); p.textContent = info.文;
+    card.appendChild(p);
+    if (k === '熔断阈值' || k === '最大重试') {
+      const b = document.createElement('button');
+      b.className = '按钮 次'; b.type = 'button';
+      b.style.marginTop = '10px'; b.style.padding = '5px 10px'; b.style.fontSize = '13px';
+      b.textContent = '把此键填入修改框';
+      b.onclick = () => { document.getElementById('键').value = k; document.getElementById('值').focus(); };
+      card.appendChild(b);
+    }
+    grid.appendChild(card);
+  }
+}
+
+async function 刷() {
+  const rules = await 投递台.getJSON('/api/签名规');
+  渲染策略(rules);
+  document.getElementById('规').textContent = JSON.stringify(rules, null, 2);
+}
+async function 保存(k, v) {
+  const 消息 = document.getElementById('消息');
+  try {
+    const out = await 投递台.postJSON('/api/签名规', {[k]: v});
+    消息.style.color = '#2d6a4f';
+    消息.textContent = '已保存 ' + k + '=' + v + '，下一次投递临界区即按新策略读闸';
+    渲染策略(out);
+    document.getElementById('规').textContent = JSON.stringify(out, null, 2);
+  } catch (e) { 消息.style.color = '#9b2c2c'; 消息.textContent = e.message; }
+}
+document.getElementById('保存').onclick = () =>
+  保存(document.getElementById('键').value, document.getElementById('值').value);
+document.querySelectorAll('button[data-k]').forEach(b => b.onclick = () => {
+  document.getElementById('键').value = b.dataset.k;
+  document.getElementById('值').value = b.dataset.v;
+  保存(b.dataset.k, b.dataset.v);
+});
 刷();
 </script>
 

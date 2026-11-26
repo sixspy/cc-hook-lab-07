@@ -30,7 +30,8 @@
 
 <section class="卷">
   <button class="按钮" type="button" id="跑">跑互证</button>
-  <pre id="出" class="说明"></pre>
+  <div id="摘要" style="margin:12px 0;"></div>
+  <pre id="出" class="详情面板"></pre>
 </section>
 <section class="卷"><div class="表绕"><table><thead><tr><th>批次号</th><th>时刻</th><th>事件总数</th><th>已投递</th><th>死信</th><th>待投</th><th>对齐</th><th>说明</th></tr></thead><tbody id="表"></tbody></table></div></section>
 
@@ -45,7 +46,17 @@ async function 刷表() {
   }
 }
 document.getElementById('跑').onclick = async () => {
-  document.getElementById('出').textContent = JSON.stringify(await 投递台.postJSON('/api/互证/跑',{}), null, 2);
+  const rep = await 投递台.postJSON('/api/互证/跑',{});
+  const sum = document.getElementById('摘要');
+  sum.innerHTML = '';
+  const bar = document.createElement('div');
+  bar.className = '对账条 ' + (rep.是否对齐 ? '齐' : '裂');
+  const m = rep.明细 || {};
+  bar.textContent = (rep.是否对齐 ? '✅ 全链对齐：' : '⛔ 对账撕裂：') + rep.说明 +
+    '（熔断端点 ' + (m.熔断端点 != null ? m.熔断端点 : '?') +
+    ' · 假绿端点 ' + (m.假绿端点 != null ? m.假绿端点 : '?') + '）';
+  sum.appendChild(bar);
+  document.getElementById('出').textContent = JSON.stringify(rep, null, 2);
   await 刷表();
 };
 刷表();
